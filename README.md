@@ -3,8 +3,6 @@
 Azure Durable Functions × 外部API進捗 × Blazor可視化
 **ジョブ進捗監視アーキテクチャ・デモサンプル**
 
----
-
 ## ソリューション構成
 
 | 起動順 | プロジェクト名                      | 主な役割                                                       |
@@ -14,7 +12,6 @@ Azure Durable Functions × 外部API進捗 × Blazor可視化
 |  3  | **StartOrchestratorApp**     | ジョブ監視Orchestrator起動・受付API<br> バリデーション/認証/受付                |
 |  4  | **BlazorProgressUI**         | 進捗可視化UI（Blazor Server）<br> ジョブ開始・進捗表示               |
 
----
 
 ## 全体フロー
 
@@ -32,8 +29,6 @@ BlazorProgressUI（進捗UI）
     └─[GET]→ StatusQueryGetUriでポーリング（進捗/状態取得）
 ```
 
----
-
 ## 各プロジェクト説明
 
 ### 1. **BlazorProgressUI**
@@ -41,7 +36,6 @@ BlazorProgressUI（進捗UI）
 * ユーザー向け進捗モニター（Blazor Server/Web Apps想定）
 * ジョブ開始ボタン → `StartOrchestratorApp`のAPIへPOST
 * 受信した `StatusQueryGetUri` でDurable Functionsの状態/進捗を定期取得＆表示
-
 
 ### 2. **StartOrchestratorApp**
 
@@ -69,38 +63,9 @@ BlazorProgressUI（進捗UI）
 Durable Functionsの状態管理には **Azure Storage** が必須です。
 **ローカル開発時は「Azurite」を必ず先に起動してください。**
 
-### 推奨: Visual Studio 拡張機能からの利用
-
-* Visual Studio 2022 以降では「**Azure Storage Emulator（Azurite）**」拡張機能が利用できます。
-* メニューの「表示」→「Azure Storage」から**簡単に起動・管理可能**です。
-
-### VSCode拡張機能でもOK
-
-* VSCodeの場合も「Azurite」拡張機能が使えます。
-
-### 参考: CLIやDockerでの起動（不要なら省略OK）
-
-* npm（Node.js）でのインストール例:
-
-  ```bash
-  npm install -g azurite
-  azurite --silent --location c:/azurite --debug c:/azurite/debug.log
-  ```
-
-* Dockerでの起動例:
-
-  ```bash
-  docker run -p 10000:10000 -p 10001:10001 mcr.microsoft.com/azure-storage/azurite
-  ```
-
----
-
 > **⚠️注意**
 > Azuriteを起動しないままFunctionsをデバッグ実行すると「127.0.0.1:10000に接続できません」等のエラーになります。
 > **ソリューション起動前に必ずAzuriteを立ち上げてください。**
-
----
-
 
 ### 2. **プロジェクト起動順**
 
@@ -118,15 +83,11 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 * UIが `StatusQueryGetUri` をポーリングし、進捗バーや状態をリアルタイム表示
 * キャンセルボタンで `TerminatePostUri` 呼び出しも可能
 
----
-
 ## 詳細・補足
 
 * **StatusQueryGetUri** … Durable Functions標準の状態監視エンドポイント。`customStatus`もここで返却
 * **外部API部はContainer Apps/Web API等へ差し替え拡張可能**
 * **StartOrchestratorApp**でバリデーションや認証/監査、前処理・A/Bテスト等も柔軟に設計可
-
----
 
 ## 発展・応用例
 
@@ -144,8 +105,6 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
     **バリデーション／認証／監視／監査などの共通基盤ロジックの再利用が容易**です。
   * **Container Apps や 他FaaS/API群との連携・差し替えにも柔軟に対応**できます。
 
----
-
 > **このリポジトリは、モダンなクラウドアプリケーションにおける
 > 長時間バッチや進捗監視・中断制御・可視化UIのアーキテクチャ実例として
 > 設計・実装の参考にご活用いただけます！**
@@ -156,8 +115,6 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 * **Azurite起動必須**（起動していないとFunctionsがStorage接続エラーで失敗）
 * `local.settings.json` の `AzureWebJobsStorage` がAzurite向きになっているか要確認
 
----
-
 ## まとめ
 
 * **進捗可視化UI**、**受付API**、**監視Orchestrator本体**、**ダミー業務API**を疎結合で構成
@@ -166,6 +123,6 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 
 > ※ 現バージョンでは「キャンセル」機能（`TerminatePostUri`を使った中断）は未実装です。
 > 今後の拡張例として `TerminatePostUri` をUIやAPIで利用することで、ユーザーによるジョブ中断も可能です。
----
+
 
 ご質問・ドキュメント追加要望はお気軽にどうぞ！
