@@ -5,7 +5,7 @@ using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Azure.WebJobs.Extensions.OpenApi.Core.Attributes;
 using Microsoft.DurableTask.Client;
 using Microsoft.Extensions.Logging;
-using StartOrchestratorApp.Models;
+using SharedModels;
 using System.Net;
 
 namespace StartOrchestratorApp.Functions;
@@ -20,29 +20,40 @@ public class StartJobMonitorFunction
     }
 
     [OpenApiOperation("StartJobMonitor", tags: new[] { "Job" })]
-    [OpenApiRequestBody("application/json", typeof(JobMonitorRequest), Required = true)]
+    [OpenApiRequestBody("application/json", typeof(JobMonitorOrchestratorInput), Required = true)]
     [OpenApiResponseWithBody(statusCode: HttpStatusCode.Accepted, contentType: "application/json", bodyType: typeof(object), Description = "Accepted")]
     [Function("StartJobMonitorFunction")]
     public async Task<HttpResponseData> Run(
         [HttpTrigger(AuthorizationLevel.Function, "post", Route = "start-job-monitor")] HttpRequestData req,
         [DurableClient] DurableTaskClient client)
     {
-        // 認証/監査/バリデーション処理をここで
-        var input = await req.ReadFromJsonAsync<List<JobMonitorRequest>>();
+        // リクエストをデシリアライズ
+        var input = await req.ReadFromJsonAsync<JobMonitorOrchestratorInput>();
 
-        // 必要なバリデーション例
-        if (input == null || input.Count == 0)
+        // バリデーション：ジョブが存在するか
+        if (input?.Jobs == null || input.Jobs.Count == 0)
         {
-            var badReq = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
-            await badReq.WriteStringAsync("Invalid input");
+            var badReq = req.CreateResponse(HttpStatusCode.BadRequest);
+            await badReq.WriteStringAsync("No jobs provided.");
             return badReq;
         }
 
-        // Orchestrator起動＋管理エンドポイント取得
+        // バリデーション：各ジョブのURLが空でないか
+        foreach (var job in input.Jobs)
+        {
+            if (string.IsNullOrWhiteSpace(job.StartApiUrl) || string.IsNullOrWhiteSpace(job.ProgressApiUrl))
+            {
+                var badReq = req.CreateResponse(HttpStatusCode.BadRequest);
+                await badReq.WriteStringAsync("One or more jobs have missing URLs.");
+                return badReq;
+            }
+        }
+
+        // Orchestrator 起動
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync("JobMonitorOrchestrator", input);
         _logger.LogInformation("Started orchestration with ID = {instanceId}", instanceId);
 
-        // Durable Functionsの管理エンドポイントを取得（Status/Terminateなど全部含む）
+        // 管理URL含むレスポンスを返す（statusQueryUri, terminatePostUriなど）
         var statusResponse = await client.CreateCheckStatusResponseAsync(req, instanceId);
 
         return statusResponse;

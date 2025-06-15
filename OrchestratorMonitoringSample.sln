@@ -11,6 +11,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "StartOrchestratorAppBody", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BlazorProgressUI", "BlazorProgressUI\BlazorProgressUI.csproj", "{0A91D861-FF9A-424A-8525-86A698417E6C}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SharedModels", "SharedModels\SharedModels.csproj", "{E3F597D3-A972-4AB4-AF65-6F4252BCE32E}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -33,6 +35,10 @@ Global
 		{0A91D861-FF9A-424A-8525-86A698417E6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0A91D861-FF9A-424A-8525-86A698417E6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0A91D861-FF9A-424A-8525-86A698417E6C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E3F597D3-A972-4AB4-AF65-6F4252BCE32E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3F597D3-A972-4AB4-AF65-6F4252BCE32E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3F597D3-A972-4AB4-AF65-6F4252BCE32E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3F597D3-A972-4AB4-AF65-6F4252BCE32E}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -10,39 +10,58 @@ namespace StartOrchestratorAppBody.Orchestrators;
 public class JobMonitorOrchestrator
 {
     [Function("JobMonitorOrchestrator")]
-    public async Task<string> Run([OrchestrationTrigger] TaskOrchestrationContext context)
+    public async Task Run([OrchestrationTrigger] TaskOrchestrationContext context)
     {
-        var input = context.GetInput<List<JobMonitorRequest>>();
-
-        for (int i = 0; i < input.Count; i++)
+        try
         {
-            var job = input[i];
+            var input = context.GetInput<JobMonitorOrchestratorInput>();
+            var jobs = input.Jobs ?? new List<JobMonitorRequest>();
 
-            // Startバッチ呼び出し
-            var started = await context.CallActivityAsync<bool>("StartExternalJobActivity", job.StartApiUrl);
-
-            if (!started)
-                return "Job start failed";
-
-            while (true)
+            for (int i = input.ResumeFromIndex; i < jobs.Count; i++)
             {
-                var progress = await context.CallActivityAsync<JobProgress>("CheckExternalJobProgressActivity", job.ProgressApiUrl);
+                var job = jobs[i];
+                var started = await context.CallActivityAsync<bool>("StartExternalJobActivity", job.StartApiUrl);
 
-                context.SetCustomStatus(new { progress = progress.Progress, started = progress.Started });
+                while (true)
+                {
+                    var progress = await context.CallActivityAsync<JobProgress>("CheckExternalJobProgressActivity", job.ProgressApiUrl);
 
-                if (progress.Progress >= 100)
-                    break;
+                    context.SetCustomStatus(new
+                    {
+                        currentJob = job.Name,
+                        currentIndex = i,
+                        progress = progress.Progress,
+                        started = progress.Started
+                    });
 
-                await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(3), CancellationToken.None);
+                    if (!progress.Started)
+                        break;
+
+                    if (progress.Progress >= 100)
+                        break;
+
+                    await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(3), CancellationToken.None);
+                }
             }
-        }
 
-        return "All Jobs Completed";
+            context.SetCustomStatus(new { completed = true });
+        }
+        catch (Exception ex)
+        {
+            context.SetCustomStatus(new { error = ex.Message });
+            throw; // throwしないとFailedにならないが、ログとしては残す
+        }
     }
 }
 
+public class JobMonitorOrchestratorInput
+{
+    public List<JobMonitorRequest> Jobs { get; set; } = new();
+    public int ResumeFromIndex { get; set; } = 0;
+}
 public class JobMonitorRequest
 {
+    public string Name { get; set; }
     public string StartApiUrl { get; set; }
     public string ProgressApiUrl { get; set; }
 }

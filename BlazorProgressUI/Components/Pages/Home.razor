@@ -1,5 +1,6 @@
 ﻿@page "/"
 @page "/jobmonitor"
+@using SharedModels
 @inject HttpClient Http
 
 <PageTitle>Monitor</PageTitle>
@@ -17,12 +18,16 @@
         <div class="progress-bar" role="progressbar" style="width:@progress%" aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100"></div>
     </div>
 }
+
 @if (!string.IsNullOrEmpty(statusMessage))
 {
     <div class="mt-3">
-        <b>進捗:</b> @progress%<br />
-        <b>状態:</b> @runtimeStatus<br />
-        <span>@statusMessage</span>
+        <h5>現在のジョブ: <span class="text-primary">@currentJob</span></h5>
+        <p>
+            <b>進捗:</b> @progress%<br />
+            <b>状態:</b> @runtimeStatus<br />
+            <span>@statusMessage</span>
+        </p>
     </div>
 }
 
@@ -32,6 +37,7 @@
     int progress = 0;
     string runtimeStatus = "";
     string statusMessage = "";
+    string currentJob = "";
     bool isRunning = false;
 
     private async Task StartJob()
@@ -39,23 +45,32 @@
         statusMessage = "";
         progress = 0;
         runtimeStatus = "";
+        currentJob = "";
         isRunning = true;
 
-        // ★1. バッチ開始API呼び出し
-        var url = @"http://localhost:7294/api/start-job-monitor"; //StartOrchestratorApp(Durable Functions入口)のURL
+        var url = @"http://localhost:7294/api/start-job-monitor";
 
-        var resp = await Http.PostAsJsonAsync(url, new[]
+        var request = new JobMonitorOrchestratorInput
         {
-            new
+            ResumeFromIndex = 0,
+            Jobs = new List<JobMonitorRequest>
             {
-                StartApiUrl = "http://localhost:5295/start",
-                ProgressApiUrl = "http://localhost:5295/progress"
-            },
-    new
-    {
-        StartApiUrl = "http://localhost:5295/start",
-        ProgressApiUrl = "http://localhost:5295/progress"
-    }});
+                new JobMonitorRequest
+                {
+                    Name = "ジョブ1",
+                    StartApiUrl = "http://localhost:5295/start",
+                    ProgressApiUrl = "http://localhost:5295/progress"
+                },
+                new JobMonitorRequest
+                {
+                    Name = "ジョブ2",
+                    StartApiUrl = "http://localhost:5295/start",
+                    ProgressApiUrl = "http://localhost:5295/progress"
+                }
+            }
+        };
+
+        var resp = await Http.PostAsJsonAsync(url, request);
         var result = await resp.Content.ReadFromJsonAsync<StartJobResponse>();
 
         if (result is null || string.IsNullOrEmpty(result.StatusQueryGetUri))
@@ -64,12 +79,12 @@
             isRunning = false;
             return;
         }
+
         statusQueryGetUri = result.StatusQueryGetUri;
         terminateUri = result.TerminatePostUri;
         statusMessage = "ジョブ開始しました。進捗を監視します。";
         StateHasChanged();
 
-        // ポーリング
         while (isRunning)
         {
             await Task.Delay(2000);
@@ -79,6 +94,7 @@
                 var status = await Http.GetFromJsonAsync<OrchestrationStatus>(statusQueryGetUri);
                 runtimeStatus = status?.runtimeStatus ?? "Unknown";
                 progress = status?.customStatus?.progress ?? 0;
+                currentJob = status?.customStatus?.currentJob ?? "";
 
                 if (runtimeStatus == "Completed" || runtimeStatus == "Failed" || runtimeStatus == "Terminated")
                 {
@@ -91,6 +107,7 @@
                 statusMessage = "進捗取得に失敗: " + ex.Message;
                 isRunning = false;
             }
+
             StateHasChanged();
         }
     }
@@ -99,8 +116,8 @@
     {
         if (!string.IsNullOrEmpty(terminateUri))
         {
-            // 理由を送信（必要なければnullや""でもOK）
             var resp = await Http.PostAsJsonAsync(terminateUri, "\"ユーザーによるキャンセル\"");
+
             if (resp.IsSuccessStatusCode)
             {
                 statusMessage = "ジョブをキャンセルしました";
@@ -110,6 +127,7 @@
             {
                 statusMessage = "キャンセルに失敗しました";
             }
+
             StateHasChanged();
         }
     }
@@ -119,13 +137,16 @@
         public string StatusQueryGetUri { get; set; }
         public string TerminatePostUri { get; set; }
     }
+
     public class OrchestrationStatus
     {
         public string runtimeStatus { get; set; }
         public CustomStatus customStatus { get; set; }
     }
+
     public class CustomStatus
     {
         public int progress { get; set; }
+        public string currentJob { get; set; } // ← 追加
     }
 }
