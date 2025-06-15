@@ -1,0 +1,97 @@
+﻿@page "/"
+@page "/jobmonitor"
+@inject HttpClient Http
+
+<PageTitle>Monitor</PageTitle>
+
+<h3>バッチ進捗モニター</h3>
+
+<button class="btn btn-primary" @onclick="StartJob" disabled="@isRunning">ジョブ開始</button>
+@if (isRunning)
+{
+    <div class="progress my-2">
+        <div class="progress-bar" role="progressbar" style="width:@progress%" aria-valuenow="@progress" aria-valuemin="0" aria-valuemax="100"></div>
+    </div>
+}
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <div class="mt-3">
+        <b>進捗:</b> @progress%<br />
+        <b>状態:</b> @runtimeStatus<br />
+        <span>@statusMessage</span>
+    </div>
+}
+
+@code {
+    string statusQueryGetUri;
+    int progress = 0;
+    string runtimeStatus = "";
+    string statusMessage = "";
+    bool isRunning = false;
+
+    private async Task StartJob()
+    {
+        statusMessage = "";
+        progress = 0;
+        runtimeStatus = "";
+        isRunning = true;
+
+        // ★1. バッチ開始API呼び出し
+        var url = @"http://localhost:7294/api/start-job-monitor"; //StartOrchestratorApp(Durable Functions入口)のURL
+        var resp = await Http.PostAsJsonAsync(url, new
+        {
+            StartApiUrl = "http://localhost:5295/start",
+            ProgressApiUrl = "http://localhost:5295/progress"
+        });
+        var result = await resp.Content.ReadFromJsonAsync<StartJobResponse>();
+
+        if (result is null || string.IsNullOrEmpty(result.StatusQueryGetUri))
+        {
+            statusMessage = "API呼び出しに失敗";
+            isRunning = false;
+            return;
+        }
+        statusQueryGetUri = result.StatusQueryGetUri;
+        statusMessage = "ジョブ開始しました。進捗を監視します。";
+        StateHasChanged();
+
+        // ポーリング
+        while (isRunning)
+        {
+            await Task.Delay(2000);
+
+            try
+            {
+                var status = await Http.GetFromJsonAsync<OrchestrationStatus>(statusQueryGetUri);
+                runtimeStatus = status?.runtimeStatus ?? "Unknown";
+                progress = status?.customStatus?.progress ?? 0;
+
+                if (runtimeStatus == "Completed" || runtimeStatus == "Failed" || runtimeStatus == "Terminated")
+                {
+                    statusMessage = $"ジョブ完了: {runtimeStatus}";
+                    isRunning = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                statusMessage = "進捗取得に失敗: " + ex.Message;
+                isRunning = false;
+            }
+            StateHasChanged();
+        }
+    }
+
+    public class StartJobResponse
+    {
+        public string StatusQueryGetUri { get; set; }
+    }
+    public class OrchestrationStatus
+    {
+        public string runtimeStatus { get; set; }
+        public CustomStatus customStatus { get; set; }
+    }
+    public class CustomStatus
+    {
+        public int progress { get; set; }
+    }
+}
