@@ -7,6 +7,10 @@
 <h3>バッチ進捗モニター</h3>
 
 <button class="btn btn-primary" @onclick="StartJob" disabled="@isRunning">ジョブ開始</button>
+<button class="btn btn-danger ms-2" @onclick="CancelJob" disabled="@(string.IsNullOrEmpty(terminateUri) || !isRunning)">
+    キャンセル
+</button>
+
 @if (isRunning)
 {
     <div class="progress my-2">
@@ -24,6 +28,7 @@
 
 @code {
     string statusQueryGetUri;
+    string terminateUri;
     int progress = 0;
     string runtimeStatus = "";
     string statusMessage = "";
@@ -52,6 +57,7 @@
             return;
         }
         statusQueryGetUri = result.StatusQueryGetUri;
+        terminateUri = result.TerminatePostUri;
         statusMessage = "ジョブ開始しました。進捗を監視します。";
         StateHasChanged();
 
@@ -81,9 +87,29 @@
         }
     }
 
+    private async Task CancelJob()
+    {
+        if (!string.IsNullOrEmpty(terminateUri))
+        {
+            // 理由を送信（必要なければnullや""でもOK）
+            var resp = await Http.PostAsJsonAsync(terminateUri, "\"ユーザーによるキャンセル\"");
+            if (resp.IsSuccessStatusCode)
+            {
+                statusMessage = "ジョブをキャンセルしました";
+                isRunning = false;
+            }
+            else
+            {
+                statusMessage = "キャンセルに失敗しました";
+            }
+            StateHasChanged();
+        }
+    }
+
     public class StartJobResponse
     {
         public string StatusQueryGetUri { get; set; }
+        public string TerminatePostUri { get; set; }
     }
     public class OrchestrationStatus
     {

@@ -10,7 +10,7 @@ Azure Durable Functions × 外部API進捗 × Blazor可視化
 |  1  | **SimpleProgressApi**        | 疑似バッチAPI<br> `/start`でバッチ開始、`/progress`で進捗返却               |
 |  2  | **StartOrchestratorAppBody** | Durable Functions本体<br> Orchestrator/Activityで業務API監視/状態管理 |
 |  3  | **StartOrchestratorApp**     | ジョブ監視Orchestrator起動・受付API<br> バリデーション/認証/受付                |
-|  4  | **BlazorProgressUI**         | 進捗可視化UI（Blazor Server）<br> ジョブ開始・進捗表示               |
+|  4  | **BlazorProgressUI**         | 進捗可視化UI（Blazor Server）<br> ジョブ開始・進捗表示・キャンセル機能               |
 
 
 ## 全体フロー
@@ -97,7 +97,7 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 * UIで「ジョブ開始」ボタン → 受付API経由でOrchestratorを起動
 * Orchestratorは疑似バッチAPIの進捗を定期取得、`customStatus`で進捗％を管理
 * UIが `StatusQueryGetUri` をポーリングし、進捗バーや状態をリアルタイム表示
-* キャンセルボタンで `TerminatePostUri` 呼び出しも可能
+* UIからキャンセルボタンで `TerminatePostUri` 呼び出し、API経由でジョブを中断可能
 
 ## 詳細・補足
 
@@ -106,10 +106,6 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 * **StartOrchestratorApp**でバリデーションや認証/監査、前処理・A/Bテスト等も柔軟に設計可
 
 ## 発展・応用例
-
-* **キャンセル（Terminate）機能：**
-  Orchestrator起動時に `TerminatePostUri` も返すことで、
-  **UIや外部アプリからAPI経由でジョブを中断可能**です。（例：Blazorの「キャンセル」ボタンで即座に中断）
 
 * **監査・通知・進捗イベント拡張：**
   オーケストレーション完了・異常・中断時に
@@ -136,9 +132,6 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 * **進捗可視化UI**、**受付API**、**監視Orchestrator本体**、**ダミー業務API**を疎結合で構成
 * 業務バッチや外部APIの状態をDurable Functionsで可視化・監視
 * 本番構成でも拡張・分離が容易なアーキテクチャ例
-
-> ※ 現バージョンでは「キャンセル」機能（`TerminatePostUri`を使った中断）は未実装です。
-> 今後の拡張例として `TerminatePostUri` をUIやAPIで利用することで、ユーザーによるジョブ中断も可能です。
 
 
 ご質問・ドキュメント追加要望はお気軽にどうぞ！
