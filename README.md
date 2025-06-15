@@ -63,6 +63,22 @@ BlazorProgressUI（進捗UI）
 Durable Functionsの状態管理には **Azure Storage** が必須です。
 **ローカル開発時は「Azurite」を必ず先に起動してください。**
 
+### 【起動成功ログ例】
+
+Azure Functions／Durable Functions で正常に利用可能な状態になると
+**コンソール上に下記のようなメッセージが表示されます：**
+
+```txt
+Azurite Blob service is starting at http://127.0.0.1:10000
+Azurite Blob service is successfully listening at http://127.0.0.1:10000
+Azurite Queue service is starting at http://127.0.0.1:10001
+Azurite Queue service is successfully listening at http://127.0.0.1:10001
+Azurite Table service is starting at http://127.0.0.1:10002
+Azurite Table service is successfully listening at http://127.0.0.1:10002
+```
+
+> **この表示が出ていれば、Azuriteが正常に稼働中です！**
+
 > **⚠️注意**
 > Azuriteを起動しないままFunctionsをデバッグ実行すると「127.0.0.1:10000に接続できません」等のエラーになります。
 > **ソリューション起動前に必ずAzuriteを立ち上げてください。**
