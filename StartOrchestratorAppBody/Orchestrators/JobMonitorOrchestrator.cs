@@ -12,25 +12,32 @@ public class JobMonitorOrchestrator
     [Function("JobMonitorOrchestrator")]
     public async Task<string> Run([OrchestrationTrigger] TaskOrchestrationContext context)
     {
-        var input = context.GetInput<JobMonitorRequest>();
-        var started = await context.CallActivityAsync<bool>("StartExternalJobActivity", input.StartApiUrl);
+        var input = context.GetInput<List<JobMonitorRequest>>();
 
-        if (!started)
-            return "Job start failed";
-
-        while (true)
+        for (int i = 0; i < input.Count; i++)
         {
-            var progress = await context.CallActivityAsync<JobProgress>("CheckExternalJobProgressActivity", input.ProgressApiUrl);
+            var job = input[i];
 
-            context.SetCustomStatus(new { progress = progress.Progress, started = progress.Started });
+            // Startバッチ呼び出し
+            var started = await context.CallActivityAsync<bool>("StartExternalJobActivity", job.StartApiUrl);
 
-            if (!progress.Started)
-                return progress.Progress >= 100 ? "Completed" : "Job not started or aborted";
-            if (progress.Progress >= 100)
-                return "Completed";
+            if (!started)
+                return "Job start failed";
 
-            await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(3), CancellationToken.None);
+            while (true)
+            {
+                var progress = await context.CallActivityAsync<JobProgress>("CheckExternalJobProgressActivity", job.ProgressApiUrl);
+
+                context.SetCustomStatus(new { progress = progress.Progress, started = progress.Started });
+
+                if (progress.Progress >= 100)
+                    break;
+
+                await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(3), CancellationToken.None);
+            }
         }
+
+        return "All Jobs Completed";
     }
 }
 

@@ -28,10 +28,10 @@ public class StartJobMonitorFunction
         [DurableClient] DurableTaskClient client)
     {
         // 認証/監査/バリデーション処理をここで
-        var input = await req.ReadFromJsonAsync<JobMonitorRequest>();
+        var input = await req.ReadFromJsonAsync<List<JobMonitorRequest>>();
 
         // 必要なバリデーション例
-        if (string.IsNullOrWhiteSpace(input.StartApiUrl) || string.IsNullOrWhiteSpace(input.ProgressApiUrl))
+        if (input == null || input.Count == 0)
         {
             var badReq = req.CreateResponse(System.Net.HttpStatusCode.BadRequest);
             await badReq.WriteStringAsync("Invalid input");

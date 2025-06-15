@@ -43,11 +43,19 @@
 
         // ★1. バッチ開始API呼び出し
         var url = @"http://localhost:7294/api/start-job-monitor"; //StartOrchestratorApp(Durable Functions入口)のURL
-        var resp = await Http.PostAsJsonAsync(url, new
+
+        var resp = await Http.PostAsJsonAsync(url, new[]
         {
-            StartApiUrl = "http://localhost:5295/start",
-            ProgressApiUrl = "http://localhost:5295/progress"
-        });
+            new
+            {
+                StartApiUrl = "http://localhost:5295/start",
+                ProgressApiUrl = "http://localhost:5295/progress"
+            },
+    new
+    {
+        StartApiUrl = "http://localhost:5295/start",
+        ProgressApiUrl = "http://localhost:5295/progress"
+    }});
         var result = await resp.Content.ReadFromJsonAsync<StartJobResponse>();
 
         if (result is null || string.IsNullOrEmpty(result.StatusQueryGetUri))
