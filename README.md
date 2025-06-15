@@ -105,6 +105,39 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 * **外部API部はContainer Apps/Web API等へ差し替え拡張可能**
 * **StartOrchestratorApp**でバリデーションや認証/監査、前処理・A/Bテスト等も柔軟に設計可
 
+## 📊 Durable Functions 管理エンドポイントの説明
+
+オーケストレーション起動後、Durable Functions は下記のような JSON を返します。
+
+```json
+{
+  "id": "abcd1234",
+  "statusQueryGetUri": "http://localhost:7071/runtime/webhooks/durabletask/instances/abcd1234",
+  "sendEventPostUri": "http://localhost:7071/runtime/webhooks/durabletask/instances/abcd1234/raiseEvent/{eventName}",
+  "terminatePostUri": "http://localhost:7071/runtime/webhooks/durabletask/instances/abcd1234/terminate",
+  "rewindPostUri": "http://localhost:7071/runtime/webhooks/durabletask/instances/abcd1234/rewind",
+  "purgeHistoryDeleteUri": "http://localhost:7071/runtime/webhooks/durabletask/instances/abcd1234"
+}
+```
+
+| フィールド名                  | 用途 / 説明                                             |
+| ----------------------- | --------------------------------------------------- |
+| `id`                    | オーケストレーションID。進捗管理やログに使用されます                         |
+| `statusQueryGetUri`     | 状態ポーリング用のGET URL。`customStatus`や完了状態も取得可能           |
+| `sendEventPostUri`      | 外部からOrchestratorへイベントを送信するPOST URL。`{eventName}`を置換 |
+| `terminatePostUri`      | 進行中のOrchestratorを強制終了するPOST URL。UIからのキャンセルに利用       |
+| `rewindPostUri`         | 失敗したオーケストレーションを再実行するPOST URL (設定が必要)                |
+| `purgeHistoryDeleteUri` | 過去の完了履歴を削除するDELETE URL                              |
+
+## ◯ Blazor UI での利用例
+
+* `statusQueryGetUri`
+  → GETで状態取得 + `customStatus`を表示。進捗バー表示など
+* `terminatePostUri`
+  → POST するとオーケストレータが削除される。キャンセルボタンから呼び出し
+
+> 該当URLは `CreateCheckStatusResponseAsync()` を通じて簡単に取得できます。Functions側での追加は不要です。
+
 ## 発展・応用例
 
 * **監査・通知・進捗イベント拡張：**
