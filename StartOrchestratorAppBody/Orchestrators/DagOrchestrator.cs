@@ -39,7 +39,7 @@ public class DagOrchestrator
                 .Where(j =>
                     !completed.Contains(j.Id) &&
                     !running.Contains(j.Id) &&
-                    j.DependsOn.All(dep => completed.Contains(dep)))
+                    IsJobReady(j, completed))
                 .ToList();
 
             if (!ready.Any() && running.Count == 0)
@@ -118,6 +118,31 @@ public class DagOrchestrator
                 if (pending.Count > 0)
                     await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(1), CancellationToken.None);
             }
+
+
+            // 条件分岐ジョブの動的登録（必要であれば）
+            foreach (var job in jobs.Values)
+            {
+                foreach (var route in job.ConditionalRoutes)
+                {
+                    if (completed.Contains(route.ConditionJobId))
+                    {
+                        var condJobStatus = jobStatusDict[route.ConditionJobId];
+                        bool match = route.ExpectedOutcome == "Success" && condJobStatus.Finished ||
+                                     route.ExpectedOutcome == "Failed" && !condJobStatus.Finished;
+
+                        if (match)
+                        {
+                            foreach (var targetId in route.TargetJobIds)
+                            {
+                                if (!jobs.ContainsKey(targetId)) continue;
+                                // jobs[targetId] は既に辞書にある。条件に応じて実行の対象となるだけ。
+                            }
+                        }
+                    }
+                }
+            }
+
         }
 
         context.SetCustomStatus(new CustomDagStatus
@@ -128,6 +153,15 @@ public class DagOrchestrator
             LastJob = lastFinishedJob,
             Completed = true
         });
+    }
+
+    private bool IsJobReady(JobNode job, HashSet<string> completed)
+    {
+        return job.DependsOnLogic?.ToUpperInvariant() switch
+        {
+            "OR" => job.DependsOn.Any(dep => completed.Contains(dep)),
+            _ => job.DependsOn.All(dep => completed.Contains(dep)),
+        };
     }
 
     // 実行＆ポーリング処理
@@ -155,8 +189,13 @@ public class DagOrchestrator
     }
 }
 
+public class ConditionalRoute
+{
+    public string ConditionJobId { get; set; }
+    public string ExpectedOutcome { get; set; } // "Success" or "Failed"
+    public List<string> TargetJobIds { get; set; }
+}
 
-// ---- モデル例 ----
 public class JobNode
 {
     public string Id { get; set; }
@@ -164,6 +203,8 @@ public class JobNode
     public string StartApiUrl { get; set; }
     public string ProgressApiUrl { get; set; }
     public List<string> DependsOn { get; set; } = new();
+    public string DependsOnLogic { get; set; } = "AND"; // "AND" or "OR"
+    public List<ConditionalRoute> ConditionalRoutes { get; set; } = new();
 }
 
 public class DagInput

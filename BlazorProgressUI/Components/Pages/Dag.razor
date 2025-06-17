@@ -6,12 +6,23 @@
 <h3>DAG進捗モニター</h3>
 
 <pre class="bg-light p-3 rounded border">
-   (A)
-  /   \
-(B)   (C)
-  \   /
-   (D)
+        (A)
+       /   \
+     (B)   (C)
+       \   /
+        (D)      ┌──────┐
+                 | E: A OR B
+                 └──────┘
+                    |
+                 ┌───────────────┐
+                 | F: IF A=OK → F |
+                 |    IF B=NG → F |
+                 └───────────────┘
+                   \           /
+                    \         /
+                      (G)
 </pre>
+
 
 <button class="btn btn-primary" @onclick="StartDag" disabled="@isRunning">DAGジョブ開始</button>
 
@@ -69,18 +80,18 @@
         // サンプルDAG
         var dagJobs = DagJobOptions.Value;
 
-        var request = new
-        {
-            jobs = new[]
-          {
-                new { id="A", name="ジョブA", startApiUrl="http://localhost:5295/progressa/start", progressApiUrl="http://localhost:5295/progressa/progress", dependsOn=new string[] {} },
-                new { id="B", name="ジョブB", startApiUrl="http://localhost:5295/progressb/start", progressApiUrl="http://localhost:5295/progressb/progress", dependsOn=new[] { "A" } },
-                new { id="C", name="ジョブC", startApiUrl="http://localhost:5295/progressc/start", progressApiUrl="http://localhost:5295/progressc/progress", dependsOn=new[] { "A" } },
-                new { id="D", name="ジョブD", startApiUrl="http://localhost:5295/progressd/start", progressApiUrl="http://localhost:5295/progressd/progress", dependsOn=new[] { "B", "C" } },
-            }
-        };
+        // var request = new
+        // {
+        //     jobs = new[]
+        //   {
+        //         new { id="A", name="ジョブA", startApiUrl="http://localhost:5295/progressa/start", progressApiUrl="http://localhost:5295/progressa/progress", dependsOn=new string[] {} },
+        //         new { id="B", name="ジョブB", startApiUrl="http://localhost:5295/progressb/start", progressApiUrl="http://localhost:5295/progressb/progress", dependsOn=new[] { "A" } },
+        //         new { id="C", name="ジョブC", startApiUrl="http://localhost:5295/progressc/start", progressApiUrl="http://localhost:5295/progressc/progress", dependsOn=new[] { "A" } },
+        //         new { id="D", name="ジョブD", startApiUrl="http://localhost:5295/progressd/start", progressApiUrl="http://localhost:5295/progressd/progress", dependsOn=new[] { "B", "C" } },
+        //     }
+        // };
 
-        var request2 = new
+        var request = new
         {
             jobs = dagJobs.Select(job => new
             {
@@ -92,7 +103,7 @@
             }).ToArray()
         };
 
-        var resp = await Http.PostAsJsonAsync("http://localhost:7294/api/start-dag", request2);
+        var resp = await Http.PostAsJsonAsync("http://localhost:7294/api/start-dag", request);
         var result = await resp.Content.ReadFromJsonAsync<StartDagResponse>();
         if (result == null || string.IsNullOrEmpty(result.StatusQueryGetUri))
         {
