@@ -23,6 +23,8 @@ public class JobNode
     public string StartApiUrl { get; set; }
     public string ProgressApiUrl { get; set; }
     public List<string> DependsOn { get; set; } = new();
+
+    public string DependsOnLogic { get; set; } = "AND"; // "AND" or "OR"
 }
 
 public class DagInput
