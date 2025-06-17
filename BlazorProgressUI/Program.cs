@@ -1,3 +1,4 @@
+using BlazorProgressUI;
 using BlazorProgressUI.Components;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddHttpClient();
+builder.Services.Configure<List<DagJobConfig>>(builder.Configuration.GetSection("DagJobs"));
 
 var app = builder.Build();
 

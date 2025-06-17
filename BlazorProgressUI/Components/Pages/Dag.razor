@@ -1,17 +1,16 @@
 ﻿@page "/dagmonitor"
+@using Microsoft.Extensions.Options
 @inject HttpClient Http
+@inject IOptionsSnapshot<List<DagJobConfig>> DagJobOptions
 
 <h3>DAG進捗モニター</h3>
 
 <pre class="bg-light p-3 rounded border">
-(A)
- │
- ├──▶ (B)
- │      │
- └──▶ (C)
-        │
-        ▼
-       (D)
+   (A)
+  /   \
+(B)   (C)
+  \   /
+   (D)
 </pre>
 
 <button class="btn btn-primary" @onclick="StartDag" disabled="@isRunning">DAGジョブ開始</button>
@@ -68,10 +67,12 @@
         jobStatuses.Clear();
 
         // サンプルDAG
+        var dagJobs = DagJobOptions.Value;
+
         var request = new
         {
             jobs = new[]
-            {
+          {
                 new { id="A", name="ジョブA", startApiUrl="http://localhost:5295/progressa/start", progressApiUrl="http://localhost:5295/progressa/progress", dependsOn=new string[] {} },
                 new { id="B", name="ジョブB", startApiUrl="http://localhost:5295/progressb/start", progressApiUrl="http://localhost:5295/progressb/progress", dependsOn=new[] { "A" } },
                 new { id="C", name="ジョブC", startApiUrl="http://localhost:5295/progressc/start", progressApiUrl="http://localhost:5295/progressc/progress", dependsOn=new[] { "A" } },
@@ -79,7 +80,19 @@
             }
         };
 
-        var resp = await Http.PostAsJsonAsync("http://localhost:7294/api/start-dag", request);
+        var request2 = new
+        {
+            jobs = dagJobs.Select(job => new
+            {
+                id = job.Id,
+                name = job.Name,
+                startApiUrl = job.StartApiUrl,
+                progressApiUrl = job.ProgressApiUrl,
+                dependsOn = job.DependsOn
+            }).ToArray()
+        };
+
+        var resp = await Http.PostAsJsonAsync("http://localhost:7294/api/start-dag", request2);
         var result = await resp.Content.ReadFromJsonAsync<StartDagResponse>();
         if (result == null || string.IsNullOrEmpty(result.StatusQueryGetUri))
         {
