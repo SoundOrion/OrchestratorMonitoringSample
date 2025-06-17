@@ -43,10 +43,18 @@
                         </div>
                     </td>
                     <td>
-                        @(js.Finished ? "✅完了" : (js.Running ? "実行中" : (js.Started ? "待機" : "未実行")))
-                        @if (!string.IsNullOrEmpty(js.Error))
+                        @if (!string.IsNullOrEmpty(js.Error) && js.Error == "Skipped due to failed dependency")
                         {
-                            <span class="text-danger">（@js.Error）</span>
+                            <span class="text-warning fw-bold">🚫スキップ</span>
+                            <div class="text-muted small">（@js.Error）</div>
+                        }
+                        else
+                        {
+                            @(js.Finished ? "✅完了" : (js.Running ? "実行中" : (js.Started ? "待機" : "未実行")))
+                            @if (!string.IsNullOrEmpty(js.Error))
+                            {
+                                <span class="text-danger">（@js.Error）</span>
+                            }
                         }
                     </td>
                 </tr>

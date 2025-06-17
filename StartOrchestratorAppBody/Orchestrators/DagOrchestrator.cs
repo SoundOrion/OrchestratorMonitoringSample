@@ -26,12 +26,13 @@ public class DagOrchestrator
                 Started = false,
                 Finished = false,
                 Running = false,
-                LastUpdated = null
+                LastUpdated = null,
+                Error = null
             });
 
         string lastFinishedJob = "";
 
-        while (jobStatusDict.Values.Any(j => !j.Finished))
+        while (jobStatusDict.Values.Any(j => !j.Finished && string.IsNullOrEmpty(j.Error)))
         {
             var completed = jobStatusDict.Values
                 .Where(j => j.Finished)
@@ -43,14 +44,28 @@ public class DagOrchestrator
                 .Select(j => j.Id)
                 .ToHashSet();
 
-            // Check all jobs and start those ready
+            var failed = jobStatusDict.Values
+                .Where(j => !j.Finished && !j.Running && !string.IsNullOrEmpty(j.Error))
+                .Select(j => j.Id)
+                .ToHashSet();
+
             foreach (var job in jobs.Values)
             {
-                if (!completed.Contains(job.Id) &&
-                    !running.Contains(job.Id) &&
-                    IsJobReady(job, completed))
+                var status = jobStatusDict[job.Id];
+
+                if (completed.Contains(job.Id) || running.Contains(job.Id) || !string.IsNullOrEmpty(status.Error))
+                    continue;
+
+                // スキップ条件：依存ジョブに失敗がある場合
+                if (job.DependsOn.Any(dep => failed.Contains(dep)))
                 {
-                    var status = jobStatusDict[job.Id];
+                    status.Error = "Skipped due to failed dependency";
+                    status.LastUpdated = context.CurrentUtcDateTime;
+                    continue;
+                }
+
+                if (IsJobReady(job, completed, failed))
+                {
                     status.Running = true;
                     status.Started = true;
 
@@ -72,7 +87,7 @@ public class DagOrchestrator
                 Finished = completed.ToList(),
                 Running = running.ToList(),
                 LastJob = lastFinishedJob,
-                Completed = jobStatusDict.Values.All(j => j.Finished || !string.IsNullOrEmpty(j.Error)) // すべて完了 or 失敗していれば完了とみなす
+                Completed = false
             });
 
             await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(2), CancellationToken.None);
@@ -84,16 +99,20 @@ public class DagOrchestrator
             Finished = jobStatusDict.Values.Where(j => j.Finished).Select(j => j.Id).ToList(),
             Running = new List<string>(),
             LastJob = lastFinishedJob,
-            Completed = true
+            Completed = jobStatusDict.Values.All(j => j.Finished || !string.IsNullOrEmpty(j.Error))
         });
     }
 
-    private bool IsJobReady(JobNode job, HashSet<string> completed)
+
+    private bool IsJobReady(JobNode job, HashSet<string> completed, HashSet<string> failed)
     {
         if (job.DependsOn == null || job.DependsOn.Count == 0)
             return true;
 
         var logic = job.DependsOnLogic?.Trim().ToUpperInvariant() ?? "AND";
+
+        if (job.DependsOn.Any(dep => failed.Contains(dep)))
+            return false;
 
         return logic switch
         {
@@ -101,6 +120,7 @@ public class DagOrchestrator
             _ => job.DependsOn.All(dep => completed.Contains(dep)),
         };
     }
+
 
     private async Task<(string jobId, bool success, string error)> RunJob(TaskOrchestrationContext context, JobNode job, JobStatus jobStatus)
     {
@@ -130,6 +150,7 @@ public class DagOrchestrator
             return (job.Id, false, ex.Message);
         }
     }
+
 }
 
 public class ConditionalRoute
