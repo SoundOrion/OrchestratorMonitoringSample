@@ -56,10 +56,11 @@ public class DagOrchestrator
 
                     _ = RunJob(context, job, status).ContinueWith(t =>
                     {
-                        var (jobId, success) = t.Result;
+                        var (jobId, success, error) = t.Result;
                         var s = jobStatusDict[jobId];
                         s.Running = false;
                         s.Finished = success;
+                        s.Error = error;
                         s.LastUpdated = context.CurrentUtcDateTime;
                     });
                 }
@@ -71,7 +72,7 @@ public class DagOrchestrator
                 Finished = completed.ToList(),
                 Running = running.ToList(),
                 LastJob = lastFinishedJob,
-                Completed = false
+                Completed = jobStatusDict.Values.All(j => j.Finished || !string.IsNullOrEmpty(j.Error)) // すべて完了 or 失敗していれば完了とみなす
             });
 
             await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(2), CancellationToken.None);
@@ -101,23 +102,32 @@ public class DagOrchestrator
         };
     }
 
-    private async Task<(string jobId, bool success)> RunJob(TaskOrchestrationContext context, JobNode job, JobStatus jobStatus)
+    private async Task<(string jobId, bool success, string error)> RunJob(TaskOrchestrationContext context, JobNode job, JobStatus jobStatus)
     {
-        await context.CallActivityAsync<bool>("StartExternalJobActivity", job.StartApiUrl);
-
-        while (true)
+        try
         {
-            var progress = await context.CallActivityAsync<JobProgress>("CheckExternalJobProgressActivity", job.ProgressApiUrl);
+            await context.CallActivityAsync<bool>("StartExternalJobActivity", job.StartApiUrl);
 
-            jobStatus.Progress = progress.Progress;
-            jobStatus.Started = progress.Started;
-            jobStatus.Finished = progress.Finished;
+            while (true)
+            {
+                var progress = await context.CallActivityAsync<JobProgress>("CheckExternalJobProgressActivity", job.ProgressApiUrl);
+
+                jobStatus.Progress = progress.Progress;
+                jobStatus.Started = progress.Started;
+                jobStatus.Finished = progress.Finished;
+                jobStatus.LastUpdated = context.CurrentUtcDateTime;
+
+                if (progress.Progress >= 100)
+                    return (job.Id, true, null);
+
+                await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(2), CancellationToken.None);
+            }
+        }
+        catch (Exception ex)
+        {
+            jobStatus.Error = ex.Message;
             jobStatus.LastUpdated = context.CurrentUtcDateTime;
-
-            if (progress.Progress >= 100)
-                return (job.Id, true);
-
-            await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(2), CancellationToken.None);
+            return (job.Id, false, ex.Message);
         }
     }
 }
