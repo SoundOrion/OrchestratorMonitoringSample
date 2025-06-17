@@ -9,7 +9,6 @@ public class DagJobConfig
     public string[] DependsOn { get; set; } = Array.Empty<string>();
 
     public string DependsOnLogic { get; set; } = "AND";
-    public List<ConditionalRoute> ConditionalRoutes { get; set; } = new();
 }
 
 public class ConditionalRoute

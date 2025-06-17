@@ -101,12 +101,6 @@
                 progressApiUrl = job.ProgressApiUrl,
                 dependsOn = job.DependsOn,
                 dependsOnLogic = job.DependsOnLogic,
-                conditionalRoutes = job.ConditionalRoutes?.Select(route => new
-                {
-                    conditionJobId = route.ConditionJobId,
-                    expectedOutcome = route.ExpectedOutcome,
-                    targetJobIds = route.TargetJobIds
-                }).ToList()
             }).ToArray()
         };
 

@@ -29,127 +29,59 @@ public class DagOrchestrator
                 LastUpdated = null
             });
 
-        var completed = new HashSet<string>();
-        var running = new HashSet<string>();
         string lastFinishedJob = "";
 
-        while (completed.Count < jobs.Count)
+        while (jobStatusDict.Values.Any(j => !j.Finished))
         {
-            var ready = jobs.Values
-                .Where(j =>
-                    !completed.Contains(j.Id) &&
-                    !running.Contains(j.Id) &&
-                    IsJobReady(j, completed))
-                .ToList();
+            var completed = jobStatusDict.Values
+                .Where(j => j.Finished)
+                .Select(j => j.Id)
+                .ToHashSet();
 
-            if (!ready.Any() && running.Count == 0)
-            {
-                throw new InvalidOperationException("実行可能なジョブがありません。DAGに循環依存があります。");
-            }
+            var running = jobStatusDict.Values
+                .Where(j => j.Running)
+                .Select(j => j.Id)
+                .ToHashSet();
 
-            var jobTasks = new List<(string jobId, Task<(string jobId, bool success)> task)>();
-
-            foreach (var job in ready)
-            {
-                running.Add(job.Id);
-                var status = jobStatusDict[job.Id];
-                status.Running = true;
-                status.Started = true;
-
-                var task = RunJob(context, job, status);
-                jobTasks.Add((job.Id, task));
-            }
-
-            // 並列に監視
-            var pending = jobTasks.ToDictionary(j => j.jobId, j => j.task);
-
-            while (pending.Count > 0)
-            {
-                var completedJobs = new List<string>();
-
-                foreach (var (jobId, task) in pending)
-                {
-                    if (task.IsCompleted)
-                    {
-                        var (id, success) = await task;
-                        var status = jobStatusDict[id];
-
-                        running.Remove(id);
-                        status.Running = false;
-                        status.Finished = success;
-                        status.LastUpdated = context.CurrentUtcDateTime;
-                        lastFinishedJob = id;
-                        completed.Add(id);
-
-                        if (!success)
-                        {
-                            status.Error = "Failed";
-                            context.SetCustomStatus(new CustomDagStatus
-                            {
-                                Jobs = jobStatusDict.Values.ToList(),
-                                Finished = completed.ToList(),
-                                Running = running.ToList(),
-                                LastJob = lastFinishedJob,
-                                Completed = false,
-                                Error = $"ジョブ {id} が失敗しました"
-                            });
-                            throw new Exception($"ジョブ {id} が失敗しました");
-                        }
-
-                        completedJobs.Add(jobId);
-                    }
-                }
-
-                foreach (var id in completedJobs)
-                {
-                    pending.Remove(id);
-                }
-
-                // 進捗更新（Aの進捗など含めリアルタイムに反映）
-                context.SetCustomStatus(new CustomDagStatus
-                {
-                    Jobs = jobStatusDict.Values.ToList(),
-                    Finished = completed.ToList(),
-                    Running = running.ToList(),
-                    LastJob = lastFinishedJob,
-                    Completed = false
-                });
-
-                if (pending.Count > 0)
-                    await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(1), CancellationToken.None);
-            }
-
-
-            // 条件分岐ジョブの動的登録（必要であれば）
+            // Check all jobs and start those ready
             foreach (var job in jobs.Values)
             {
-                foreach (var route in job.ConditionalRoutes)
+                if (!completed.Contains(job.Id) &&
+                    !running.Contains(job.Id) &&
+                    IsJobReady(job, completed))
                 {
-                    if (completed.Contains(route.ConditionJobId))
-                    {
-                        var condJobStatus = jobStatusDict[route.ConditionJobId];
-                        bool match = route.ExpectedOutcome == "Success" && condJobStatus.Finished ||
-                                     route.ExpectedOutcome == "Failed" && !condJobStatus.Finished;
+                    var status = jobStatusDict[job.Id];
+                    status.Running = true;
+                    status.Started = true;
 
-                        if (match)
-                        {
-                            foreach (var targetId in route.TargetJobIds)
-                            {
-                                if (!jobs.ContainsKey(targetId)) continue;
-                                // jobs[targetId] は既に辞書にある。条件に応じて実行の対象となるだけ。
-                            }
-                        }
-                    }
+                    _ = RunJob(context, job, status).ContinueWith(t =>
+                    {
+                        var (jobId, success) = t.Result;
+                        var s = jobStatusDict[jobId];
+                        s.Running = false;
+                        s.Finished = success;
+                        s.LastUpdated = context.CurrentUtcDateTime;
+                    });
                 }
             }
 
+            context.SetCustomStatus(new CustomDagStatus
+            {
+                Jobs = jobStatusDict.Values.ToList(),
+                Finished = completed.ToList(),
+                Running = running.ToList(),
+                LastJob = lastFinishedJob,
+                Completed = false
+            });
+
+            await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(2), CancellationToken.None);
         }
 
         context.SetCustomStatus(new CustomDagStatus
         {
             Jobs = jobStatusDict.Values.ToList(),
-            Finished = completed.ToList(),
-            Running = running.ToList(),
+            Finished = jobStatusDict.Values.Where(j => j.Finished).Select(j => j.Id).ToList(),
+            Running = new List<string>(),
             LastJob = lastFinishedJob,
             Completed = true
         });
@@ -157,14 +89,18 @@ public class DagOrchestrator
 
     private bool IsJobReady(JobNode job, HashSet<string> completed)
     {
-        return job.DependsOnLogic?.ToUpperInvariant() switch
+        if (job.DependsOn == null || job.DependsOn.Count == 0)
+            return true;
+
+        var logic = job.DependsOnLogic?.Trim().ToUpperInvariant() ?? "AND";
+
+        return logic switch
         {
             "OR" => job.DependsOn.Any(dep => completed.Contains(dep)),
             _ => job.DependsOn.All(dep => completed.Contains(dep)),
         };
     }
 
-    // 実行＆ポーリング処理
     private async Task<(string jobId, bool success)> RunJob(TaskOrchestrationContext context, JobNode job, JobStatus jobStatus)
     {
         await context.CallActivityAsync<bool>("StartExternalJobActivity", job.StartApiUrl);
@@ -180,9 +116,6 @@ public class DagOrchestrator
 
             if (progress.Progress >= 100)
                 return (job.Id, true);
-
-            if (!progress.Started && progress.Progress == 0)
-                return (job.Id, false);
 
             await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(2), CancellationToken.None);
         }
@@ -204,7 +137,6 @@ public class JobNode
     public string ProgressApiUrl { get; set; }
     public List<string> DependsOn { get; set; } = new();
     public string DependsOnLogic { get; set; } = "AND"; // "AND" or "OR"
-    public List<ConditionalRoute> ConditionalRoutes { get; set; } = new();
 }
 
 public class DagInput
