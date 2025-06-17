@@ -20,11 +20,16 @@ public class StartExternalJobActivity
     [Function("StartExternalJobActivity")]
     public async Task<bool> Run([ActivityTrigger] string startApiUrl)
     {
+        //var client = _httpClientFactory.CreateClient();
+        //var resp = await client.PostAsync(startApiUrl, null);
+        //resp.EnsureSuccessStatusCode();
+        //var json = await resp.Content.ReadAsStringAsync();
+        //var result = JsonDocument.Parse(json);
+        //return result.RootElement.GetProperty("started").GetBoolean();
+
         var client = _httpClientFactory.CreateClient();
         var resp = await client.PostAsync(startApiUrl, null);
         resp.EnsureSuccessStatusCode();
-        var json = await resp.Content.ReadAsStringAsync();
-        var result = JsonDocument.Parse(json);
-        return result.RootElement.GetProperty("started").GetBoolean();
+        return true;
     }
 }

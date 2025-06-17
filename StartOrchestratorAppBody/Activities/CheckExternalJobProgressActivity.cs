@@ -30,7 +30,9 @@ public class CheckExternalJobProgressActivity
         return new JobProgress
         {
             Started = result.RootElement.GetProperty("started").GetBoolean(),
-            Progress = result.RootElement.GetProperty("progress").GetInt32()
+            Progress = result.RootElement.GetProperty("progress").GetInt32(),
+            //Finished = result.RootElement.GetProperty("finished").GetBoolean(),
+            Finished = result.RootElement.TryGetProperty("finished", out var fin) ? fin.GetBoolean() : result.RootElement.GetProperty("progress").GetInt32() >= 100
         };
     }
 }

@@ -31,8 +31,12 @@ public class JobMonitorOrchestrator
                         currentJob = job.Name,
                         currentIndex = i,
                         progress = progress.Progress,
-                        started = progress.Started
+                        started = progress.Started,
+                        finished = progress.Finished,
                     });
+
+                    //if (progress.Finished)
+                    //    break;
 
                     if (!progress.Started)
                         break;

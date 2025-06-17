@@ -10,4 +10,5 @@ public class JobProgress
 {
     public bool Started { get; set; }
     public int Progress { get; set; }
+    public bool Finished { get; set; }
 }

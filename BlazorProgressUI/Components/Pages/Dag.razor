@@ -1,0 +1,140 @@
+﻿@page "/dagmonitor"
+@inject HttpClient Http
+
+<h3>DAG進捗モニター</h3>
+
+<pre class="bg-light p-3 rounded border">
+(A)
+ │
+ ├──▶ (B)
+ │      │
+ └──▶ (C)
+        │
+        ▼
+       (D)
+</pre>
+
+<button class="btn btn-primary" @onclick="StartDag" disabled="@isRunning">DAGジョブ開始</button>
+
+@if (!string.IsNullOrEmpty(statusMessage))
+{
+    <div class="mt-3">@statusMessage</div>
+}
+@if (jobStatuses.Any())
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>ジョブ名</th>
+                <th>進捗</th>
+                <th>状態</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var js in jobStatuses)
+            {
+                <tr>
+                    <td>@js.Name</td>
+                    <td>
+                        <div class="progress">
+                            <div class="progress-bar" role="progressbar" style="width:@js.Progress%" aria-valuenow="@js.Progress" aria-valuemin="0" aria-valuemax="100">
+                                @js.Progress %
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        @(js.Finished ? "✅完了" : (js.Running ? "実行中" : (js.Started ? "待機" : "未実行")))
+                        @if (!string.IsNullOrEmpty(js.Error))
+                        {
+                            <span class="text-danger">（@js.Error）</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    string statusQueryGetUri;
+    string statusMessage = "";
+    bool isRunning = false;
+    List<JobStatus> jobStatuses = new();
+
+    private async Task StartDag()
+    {
+        statusMessage = "";
+        isRunning = true;
+        jobStatuses.Clear();
+
+        // サンプルDAG
+        var request = new
+        {
+            jobs = new[]
+            {
+                new { id="A", name="ジョブA", startApiUrl="http://localhost:5295/progressa/start", progressApiUrl="http://localhost:5295/progressa/progress", dependsOn=new string[] {} },
+                new { id="B", name="ジョブB", startApiUrl="http://localhost:5295/progressb/start", progressApiUrl="http://localhost:5295/progressb/progress", dependsOn=new[] { "A" } },
+                new { id="C", name="ジョブC", startApiUrl="http://localhost:5295/progressc/start", progressApiUrl="http://localhost:5295/progressc/progress", dependsOn=new[] { "A" } },
+                new { id="D", name="ジョブD", startApiUrl="http://localhost:5295/progressd/start", progressApiUrl="http://localhost:5295/progressd/progress", dependsOn=new[] { "B", "C" } },
+            }
+        };
+
+        var resp = await Http.PostAsJsonAsync("http://localhost:7294/api/start-dag", request);
+        var result = await resp.Content.ReadFromJsonAsync<StartDagResponse>();
+        if (result == null || string.IsNullOrEmpty(result.StatusQueryGetUri))
+        {
+            statusMessage = "API呼び出し失敗";
+            isRunning = false;
+            return;
+        }
+
+        statusQueryGetUri = result.StatusQueryGetUri;
+        statusMessage = "DAG開始。進捗監視中...";
+
+        while (isRunning)
+        {
+            await Task.Delay(1000);
+            try
+            {
+                var status = await Http.GetFromJsonAsync<DagOrchestrationStatus>(statusQueryGetUri);
+                jobStatuses = status?.customStatus?.Jobs ?? new();
+                if (status.runtimeStatus is "Completed" or "Failed" or "Terminated")
+                {
+                    statusMessage = $"DAG完了: {status.runtimeStatus}";
+                    isRunning = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                statusMessage = "進捗取得失敗: " + ex.Message;
+                isRunning = false;
+            }
+            StateHasChanged();
+        }
+    }
+
+    public class StartDagResponse
+    {
+        public string StatusQueryGetUri { get; set; }
+    }
+    public class DagOrchestrationStatus
+    {
+        public string runtimeStatus { get; set; }
+        public CustomDagStatus customStatus { get; set; }
+    }
+    public class CustomDagStatus
+    {
+        public List<JobStatus> Jobs { get; set; } = new();
+    }
+    public class JobStatus
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public int Progress { get; set; }
+        public bool Started { get; set; }
+        public bool Finished { get; set; }
+        public bool Running { get; set; }
+        public DateTime? LastUpdated { get; set; }
+        public string Error { get; set; }
+    }
+}
