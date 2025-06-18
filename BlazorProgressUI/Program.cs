@@ -7,7 +7,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddHttpClient();
-builder.Services.Configure<List<DagJobConfig>>(builder.Configuration.GetSection("DagJobs"));
+builder.Services.Configure<DagConfigRoot>(builder.Configuration.GetSection("Dag"));
 
 var app = builder.Build();
 

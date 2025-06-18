@@ -31,6 +31,7 @@ public class DagOrchestrator
             });
 
         string lastFinishedJob = "";
+        var pendingTasks = new Dictionary<string, Task<(string jobId, bool success, string error)>>();
 
         while (jobStatusDict.Values.Any(j => !j.Finished && string.IsNullOrEmpty(j.Error)))
         {
@@ -49,6 +50,8 @@ public class DagOrchestrator
                 .Select(j => j.Id)
                 .ToHashSet();
 
+            bool newJobsAdded = false;
+
             foreach (var job in jobs.Values)
             {
                 var status = jobStatusDict[job.Id];
@@ -56,7 +59,52 @@ public class DagOrchestrator
                 if (completed.Contains(job.Id) || running.Contains(job.Id) || !string.IsNullOrEmpty(status.Error))
                     continue;
 
-                // スキップ条件：依存ジョブに失敗がある場合
+                if (input.ConditionalRoutes.Count != 0)
+                {
+                    var relatedRoutes = input.ConditionalRoutes
+                        .Where(r => r.TargetJobIds.Contains(job.Id));
+
+                    if (relatedRoutes.Any())
+                    {
+                        bool anyConditionEvaluated = false;
+                        bool conditionMatched = false;
+
+                        foreach (var route in relatedRoutes)
+                        {
+                            if (!jobStatusDict.TryGetValue(route.ConditionJobId, out var condJob))
+                                continue;
+
+                            if (!condJob.Finished && string.IsNullOrEmpty(condJob.Error))
+                                continue;
+
+                            anyConditionEvaluated = true;
+
+                            var match = route.ExpectedOutcome.ToUpperInvariant() switch
+                            {
+                                "SUCCESS" => condJob.Finished && string.IsNullOrEmpty(condJob.Error),
+                                "FAILED" => !condJob.Finished && !string.IsNullOrEmpty(condJob.Error),
+                                _ => false
+                            };
+
+                            if (match)
+                            {
+                                conditionMatched = true;
+                                break;
+                            }
+                        }
+
+                        if (anyConditionEvaluated && !conditionMatched)
+                        {
+                            status.Error = "Skipped: ConditionalRoute not matched";
+                            status.LastUpdated = context.CurrentUtcDateTime;
+                            continue;
+                        }
+
+                        if (!anyConditionEvaluated)
+                            continue;
+                    }
+                }
+
                 if (job.DependsOn.Any(dep => failed.Contains(dep)))
                 {
                     status.Error = "Skipped due to failed dependency";
@@ -68,27 +116,50 @@ public class DagOrchestrator
                 {
                     status.Running = true;
                     status.Started = true;
+                    status.LastUpdated = context.CurrentUtcDateTime;
 
-                    _ = RunJob(context, job, status).ContinueWith(t =>
-                    {
-                        var (jobId, success, error) = t.Result;
-                        var s = jobStatusDict[jobId];
-                        s.Running = false;
-                        s.Finished = success;
-                        s.Error = error;
-                        s.LastUpdated = context.CurrentUtcDateTime;
-                    });
+                    pendingTasks[job.Id] = RunJob(context, job, status);
+                    newJobsAdded = true;
                 }
             }
 
-            context.SetCustomStatus(new CustomDagStatus
+            if (newJobsAdded)
             {
-                Jobs = jobStatusDict.Values.ToList(),
-                Finished = completed.ToList(),
-                Running = running.ToList(),
-                LastJob = lastFinishedJob,
-                Completed = false
-            });
+                context.SetCustomStatus(new CustomDagStatus
+                {
+                    Jobs = jobStatusDict.Values.ToList(),
+                    Finished = completed.ToList(),
+                    Running = running.ToList(),
+                    LastJob = lastFinishedJob,
+                    Completed = false
+                });
+            }
+
+            if (pendingTasks.Any())
+            {
+                var finishedTask = await Task.WhenAny(pendingTasks.Values);
+                var result = await finishedTask;
+
+                if (jobStatusDict.TryGetValue(result.jobId, out var s))
+                {
+                    s.Running = false;
+                    s.Finished = result.success;
+                    s.Error = result.error;
+                    s.LastUpdated = context.CurrentUtcDateTime;
+                    if (result.success) lastFinishedJob = result.jobId;
+                }
+
+                pendingTasks.Remove(result.jobId);
+
+                context.SetCustomStatus(new CustomDagStatus
+                {
+                    Jobs = jobStatusDict.Values.ToList(),
+                    Finished = jobStatusDict.Values.Where(j => j.Finished).Select(j => j.Id).ToList(),
+                    Running = jobStatusDict.Values.Where(j => j.Running).Select(j => j.Id).ToList(),
+                    LastJob = lastFinishedJob,
+                    Completed = false
+                });
+            }
 
             await context.CreateTimer(context.CurrentUtcDateTime.AddSeconds(2), CancellationToken.None);
         }
@@ -102,7 +173,6 @@ public class DagOrchestrator
             Completed = jobStatusDict.Values.All(j => j.Finished || !string.IsNullOrEmpty(j.Error))
         });
     }
-
 
     private bool IsJobReady(JobNode job, HashSet<string> completed, HashSet<string> failed)
     {
@@ -120,7 +190,6 @@ public class DagOrchestrator
             _ => job.DependsOn.All(dep => completed.Contains(dep)),
         };
     }
-
 
     private async Task<(string jobId, bool success, string error)> RunJob(TaskOrchestrationContext context, JobNode job, JobStatus jobStatus)
     {
@@ -150,7 +219,6 @@ public class DagOrchestrator
             return (job.Id, false, ex.Message);
         }
     }
-
 }
 
 public class ConditionalRoute
@@ -173,7 +241,9 @@ public class JobNode
 public class DagInput
 {
     public List<JobNode> Jobs { get; set; } = new();
+    public List<ConditionalRoute> ConditionalRoutes { get; set; } = new(); // Optional
 }
+
 
 public class JobStatus
 {

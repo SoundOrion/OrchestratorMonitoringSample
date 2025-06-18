@@ -1,5 +1,11 @@
 ﻿namespace BlazorProgressUI;
 
+public class DagConfigRoot
+{
+    public List<DagJobConfig> Jobs { get; set; } = new();
+    public List<ConditionalRoute> ConditionalRoutes { get; set; } = new();
+}
+
 public class DagJobConfig
 {
     public string Id { get; set; }

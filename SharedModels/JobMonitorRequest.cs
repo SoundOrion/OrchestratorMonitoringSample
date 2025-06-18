@@ -27,7 +27,16 @@ public class JobNode
     public string DependsOnLogic { get; set; } = "AND"; // "AND" or "OR"
 }
 
+
+public class ConditionalRoute
+{
+    public string ConditionJobId { get; set; }       // 条件となるジョブ
+    public string ExpectedOutcome { get; set; }      // "Success" or "Failed"
+    public List<string> TargetJobIds { get; set; }   // 条件に合致したときに有効になるジョブ
+}
+
 public class DagInput
 {
     public List<JobNode> Jobs { get; set; } = new();
+    public List<ConditionalRoute> ConditionalRoutes { get; set; } = new(); // 追加
 }
