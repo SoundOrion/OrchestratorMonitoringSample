@@ -53,6 +53,7 @@
         var request = new JobMonitorOrchestratorInput
         {
             ResumeFromIndex = 0,
+            StopOnFailure = true,
             Jobs = new List<JobMonitorRequest>
             {
                 new JobMonitorRequest

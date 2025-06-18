@@ -4,6 +4,7 @@ public class JobMonitorOrchestratorInput
 {
     public List<JobMonitorRequest> Jobs { get; set; } = new();
     public int ResumeFromIndex { get; set; } = 0;
+    public bool StopOnFailure { get; set; } = true; // ★追加：失敗時に停止するか？
 }
 
 public class JobMonitorRequest
