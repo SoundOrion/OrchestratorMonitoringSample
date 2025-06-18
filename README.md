@@ -168,3 +168,139 @@ Visual Studioの「複数スタートアッププロジェクト」で同時起�
 
 
 ご質問・ドキュメント追加要望はお気軽にどうぞ！
+
+
+---
+
+# ✅ DAG設計テンプレート：`ConditionalRoute` × `DependsOn` の整理指針
+
+---
+
+## 🧩 1. **設計ポリシー**
+
+| 設計項目                         | 方針                                   |
+| ---------------------------- | ------------------------------------ |
+| **DependsOn**                | 実行の\*\*順序制御（依存関係）\*\*に使用する           |
+| **ConditionalRoute**         | **「実行するかどうか」**を**前ジョブの結果で決める**       |
+| **失敗した依存**                   | **スキップされる（基本）**                      |
+| **ConditionalRouteで補完したい場合** | DependsOnを**空**または**依存に含めない**ように設計する |
+
+---
+
+## 📌 2. 基本テンプレート構成
+
+```json5
+{
+  "Jobs": [
+    {
+      "Id": "A",
+      "DependsOn": []
+    },
+    {
+      "Id": "B",
+      "DependsOn": [ "A" ]
+    },
+    {
+      "Id": "C",
+      "DependsOn": [ "A" ]
+    },
+    {
+      "Id": "D",
+      "DependsOn": [ "B", "C" ],
+      "DependsOnLogic": "OR"
+    }
+  ],
+  "ConditionalRoutes": [
+    {
+      "ConditionJobId": "A",
+      "ExpectedOutcome": "Success",
+      "TargetJobIds": [ "B" ]
+    },
+    {
+      "ConditionJobId": "A",
+      "ExpectedOutcome": "Failed",
+      "TargetJobIds": [ "C" ]
+    }
+  ]
+}
+```
+
+---
+
+## 🛠 3. よくあるパターン
+
+### ✅ パターンA：成功時だけ実行したいジョブ
+
+```json5
+{
+  "ConditionJobId": "X",
+  "ExpectedOutcome": "Success",
+  "TargetJobIds": [ "Y" ]
+}
+```
+
+* `Y` は `X` に依存していてもOK（`DependsOn: ["X"]`）
+* `X` 成功時だけ `Y` が走る（失敗時はスキップ）
+
+---
+
+### ✅ パターンB：失敗時の代替ジョブを実行
+
+```json5
+{
+  "ConditionJobId": "X",
+  "ExpectedOutcome": "Failed",
+  "TargetJobIds": [ "Y" ]
+}
+```
+
+* `Y` の `DependsOn` に `X` を**含めない**
+* 失敗してから走る設計にしたいなら、**条件評価待ちを考慮して遅延起動を許容する**
+
+---
+
+### ⚠️ NGパターン：失敗後に依存付きで動かしたい
+
+```json5
+{
+  "ConditionJobId": "A",
+  "ExpectedOutcome": "Failed",
+  "TargetJobIds": [ "C" ]
+}
+// C.DependsOn = ["A"] → NG（A失敗でCスキップされる）
+```
+
+**🧯解決策：** `C.DependsOn = []` にする
+→ 代わりに `ConditionalRoute` で実行判定し、必要なら明示的に「A完了後」のみ許可する設計が必要
+
+---
+
+## 🧠 実装補足（Orchestrator側）
+
+* `ConditionalRoute` の評価は **「依存とは独立に」行う**
+* `IsJobReady()` は `DependsOn` だけを見る
+* スキップ評価（エラー／失敗依存）よりも `ConditionalRoute` マッチ判定が先に来るようにする
+
+---
+
+## 📘 参考ロジックチャート
+
+```
+for each job:
+    if ConditionalRoute exists:
+        wait until condition job finished
+        if not matched → skip
+    if any DependsOn failed → skip
+    if IsJobReady() → run
+```
+
+---
+
+## ✅ 設計テンプレートまとめ
+
+| ケース       | ConditionalRoute | DependsOn | 備考                   |
+| --------- | ---------------- | --------- | -------------------- |
+| 成功時だけ動かす  | ✓ Success        | 任意        | よくある分岐               |
+| 失敗時に別のジョブ | ✓ Failed         | ❌         | DependsOnに失敗ジョブを含めない |
+| 完了後に必ず動く  | ❌                | ✓         | 単純な依存                |
+| 条件＋依存制御   | ✓ + DependsOn    | ✓         | 高度設計だが可              |

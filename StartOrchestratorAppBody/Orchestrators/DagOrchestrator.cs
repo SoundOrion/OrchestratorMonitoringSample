@@ -46,7 +46,12 @@ public class DagOrchestrator
                 .ToHashSet();
 
             var failed = jobStatusDict.Values
-                .Where(j => !j.Finished && !j.Running && !string.IsNullOrEmpty(j.Error))
+                .Where(j => !j.Finished && !j.Running && !string.IsNullOrEmpty(j.Error) && !j.Error.StartsWith("Skipped"))
+                .Select(j => j.Id)
+                .ToHashSet();
+
+            var skipped = jobStatusDict.Values
+                .Where(j => !j.Finished && !j.Running && j.Error?.StartsWith("Skipped") == true)
                 .Select(j => j.Id)
                 .ToHashSet();
 
@@ -112,7 +117,7 @@ public class DagOrchestrator
                     continue;
                 }
 
-                if (IsJobReady(job, completed, failed))
+                if (IsJobReady(job, completed, skipped))
                 {
                     status.Running = true;
                     status.Started = true;
@@ -174,21 +179,25 @@ public class DagOrchestrator
         });
     }
 
-    private bool IsJobReady(JobNode job, HashSet<string> completed, HashSet<string> failed)
+    private bool IsJobReady(JobNode job, HashSet<string> completed, HashSet<string> skipped)
     {
         if (job.DependsOn == null || job.DependsOn.Count == 0)
             return true;
 
         var logic = job.DependsOnLogic?.Trim().ToUpperInvariant() ?? "AND";
 
-        if (job.DependsOn.Any(dep => failed.Contains(dep)))
-            return false;
+        // すべての依存が「完了」または「スキップ」または「まだ未実行」などをチェック
+        var completedOrSkipped = completed.Union(skipped).ToHashSet();
 
-        return logic switch
+        switch (logic)
         {
-            "OR" => job.DependsOn.Any(dep => completed.Contains(dep)),
-            _ => job.DependsOn.All(dep => completed.Contains(dep)),
-        };
+            case "OR":
+                // どれか1つが completed なら実行OK
+                return job.DependsOn.Any(dep => completed.Contains(dep));
+            default: // AND
+                     // 全てが完了またはスキップされているか
+                return job.DependsOn.All(dep => completedOrSkipped.Contains(dep));
+        }
     }
 
     private async Task<(string jobId, bool success, string error)> RunJob(TaskOrchestrationContext context, JobNode job, JobStatus jobStatus)
@@ -215,6 +224,7 @@ public class DagOrchestrator
         catch (Exception ex)
         {
             jobStatus.Error = ex.Message;
+            jobStatus.Finished = false;
             jobStatus.LastUpdated = context.CurrentUtcDateTime;
             return (job.Id, false, ex.Message);
         }
